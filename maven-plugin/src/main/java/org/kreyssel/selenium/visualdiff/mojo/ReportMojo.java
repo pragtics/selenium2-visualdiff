@@ -1,24 +1,21 @@
 package org.kreyssel.selenium.visualdiff.mojo;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.List;
-import java.util.Locale;
-
+import com.google.common.collect.ImmutableListMultimap;
 import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.factory.ArtifactFactory;
+import org.apache.maven.artifact.InvalidRepositoryException;
 import org.apache.maven.artifact.metadata.ArtifactMetadataRetrievalException;
 import org.apache.maven.artifact.metadata.ArtifactMetadataSource;
-import org.apache.maven.artifact.repository.ArtifactRepository;
-import org.apache.maven.artifact.resolver.ArtifactNotFoundException;
-import org.apache.maven.artifact.resolver.ArtifactResolutionException;
-import org.apache.maven.artifact.resolver.ArtifactResolver;
+import org.apache.maven.artifact.resolver.*;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
-import org.apache.maven.doxia.sink.Sink;
+import org.apache.maven.doxia.site.decoration.DecorationModel;
 import org.apache.maven.doxia.siterenderer.Renderer;
+import org.apache.maven.doxia.siterenderer.RenderingContext;
+import org.apache.maven.doxia.siterenderer.SiteRenderingContext;
+import org.apache.maven.doxia.siterenderer.sink.SiteRendererSink;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.reporting.AbstractMavenReport;
 import org.apache.maven.reporting.MavenReportException;
+import org.apache.maven.repository.RepositorySystem;
 import org.codehaus.mojo.versions.api.ArtifactVersions;
 import org.codehaus.mojo.versions.ordering.VersionComparators;
 import org.kreyssel.selenium.visualdiff.core.ScreenshotStore;
@@ -29,7 +26,11 @@ import org.kreyssel.selenium.visualdiff.mojo.report.VisualDiffReportRenderer;
 import org.kreyssel.selenium.visualdiff.mojo.report.VisualDiffReportUtil;
 import org.kreyssel.selenium.visualdiff.mojo.report.VisualDiffTestReportRenderer;
 
-import com.google.common.collect.ImmutableListMultimap;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.util.*;
 
 /**
  * ReportMojo generates a report of visual diffs between two selenium2
@@ -43,7 +44,7 @@ public class ReportMojo extends AbstractMavenReport {
 	/**
 	 * Directory where reports will go.
 	 * 
-	 * @parameter expression="${project.reporting.outputDirectory}"
+	 * @parameter property="project.reporting.outputDirectory"
 	 * @required
 	 * @readonly
 	 */
@@ -58,13 +59,11 @@ public class ReportMojo extends AbstractMavenReport {
 
 	/**
 	 * Used to look up Artifacts in the remote repository.
-	 * 
-	 * @parameter expression=
-	 *            "${component.org.apache.maven.artifact.factory.ArtifactFactory}"
+	 * @component
 	 * @required
 	 * @readonly
 	 */
-	protected ArtifactFactory artifactFactory;
+	protected RepositorySystem repositorySystem;
 
 	/**
 	 * @component
@@ -80,18 +79,6 @@ public class ReportMojo extends AbstractMavenReport {
 	 * @readonly
 	 */
 	private ArtifactMetadataSource artifactMetadataSource;
-
-	/**
-	 * @parameter expression="${project.remoteArtifactRepositories}"
-	 * @readonly
-	 */
-	protected List remoteArtifactRepositories;
-
-	/**
-	 * @parameter expression="${localRepository}"
-	 * @readonly
-	 */
-	protected ArtifactRepository localRepository;
 
 	/**
 	 * @component
@@ -175,8 +162,13 @@ public class ReportMojo extends AbstractMavenReport {
 			throw new MavenReportException("Error on diff screenshots!", ex);
 		}
 
-		new VisualDiffReportRenderer(getSink(), currentArtifact, previousArtifact, diffs)
-				.render();
+		new VisualDiffReportRenderer(getSink(), currentArtifact, previousArtifact, diffs).render();
+
+
+		SiteRenderingContext siteContext = new SiteRenderingContext();
+		siteContext.setDecoration( new DecorationModel() );
+		siteContext.setTemplateName( "org/apache/maven/doxia/siterenderer/resources/default-site.vm" );
+		siteContext.setTemplateProperties(getTemplateProperties());
 
 		// render report per testclass
 		ImmutableListMultimap<String, VisualDiffMeta> groupedPerTest = VisualDiffMetaGrouper
@@ -184,29 +176,31 @@ public class ReportMojo extends AbstractMavenReport {
 		for (String testClass : groupedPerTest.keySet()) {
 			getLog().info("Render visual diff result for test '" + testClass + "' ...");
 
-			try {
-				Sink sinkForTestClass = getSinkFactory().createSink(new File(getOutputDirectory()),
-						VisualDiffReportUtil.asFilename(testClass, ".html"));
+			String filename = VisualDiffReportUtil.asFilename(testClass, ".html");
 
-				new VisualDiffTestReportRenderer(sinkForTestClass, testClass,
-						groupedPerTest.get(testClass)).render();
-			} catch (IOException ex) {
-				getLog().error("Could not create visual diff report for test '" + testClass + "'!",
-						ex);
+			RenderingContext context = new RenderingContext(new File(outputDirectory), filename);
+			SiteRendererSink sinkForTestClass = new SiteRendererSink(context);
+			new VisualDiffTestReportRenderer(sinkForTestClass, testClass, groupedPerTest.get(testClass)).render();
+
+			try {
+				OutputStreamWriter outputStreamWriter = new OutputStreamWriter(new FileOutputStream(new File(outputDirectory, filename)), getOutputEncoding());
+				getSiteRenderer().generateDocument(outputStreamWriter, sinkForTestClass, siteContext);
+			} catch (Exception e) {
+				throw new RuntimeException(e);
 			}
 		}
 	}
 
 	protected Artifact getScreenshotsFromLatestRelease(final Artifact artifact)
 			throws ArtifactMetadataRetrievalException, ArtifactResolutionException,
-			ArtifactNotFoundException {
+			ArtifactNotFoundException, org.eclipse.aether.resolution.ArtifactResolutionException, InvalidRepositoryException {
 
 		// resolve previous version of screenshots.zip via maven metadata
 		ArtifactVersions artifactVersions = new ArtifactVersions(artifact,
-				artifactMetadataSource.retrieveAvailableVersions(artifact, localRepository,
-						remoteArtifactRepositories),
+				artifactMetadataSource.retrieveAvailableVersions(artifact, repositorySystem.createDefaultLocalRepository(), Collections.singletonList(repositorySystem.createDefaultRemoteRepository())),
 				VersionComparators.getVersionComparator("maven"));
-		ArtifactVersion newestArtifactVersion = artifactVersions.getNewestVersion(null, null);
+
+		ArtifactVersion newestArtifactVersion = artifactVersions.getNewestVersion(null, artifact.getSelectedVersion(), true);
 
 		if (newestArtifactVersion == null) {
 			return null;
@@ -216,14 +210,30 @@ public class ReportMojo extends AbstractMavenReport {
 	}
 
 	protected Artifact resolveScreenshotArtifact(final Artifact artifact, final String version)
-			throws ArtifactResolutionException, ArtifactNotFoundException {
+			throws ArtifactNotFoundException, ArtifactResolutionException, InvalidRepositoryException {
 
 		// resolve screenshots.zip artifact
-		Artifact resolveArtifact = artifactFactory.createArtifactWithClassifier(
+		Artifact resolveArtifact = repositorySystem.createArtifactWithClassifier(
 				artifact.getGroupId(), artifact.getArtifactId(), version, "zip", "screenshots");
 
-		artifactResolver.resolve(resolveArtifact, remoteArtifactRepositories, localRepository);
+
+		ArtifactResolutionResult resolve = repositorySystem.resolve(new ArtifactResolutionRequest().setArtifact(resolveArtifact));
+//		artifactResolver.resolve(resolveArtifact, repositorySystem.createDefaultLocalRepository(), localRepository);
 
 		return resolveArtifact;
+	}
+
+	private Map<String, Object> getTemplateProperties()
+	{
+		Map<String, Object> templateProperties = new HashMap<String, Object>();
+		templateProperties.put( "project", getProject() );
+		templateProperties.put( "inputEncoding", getInputEncoding() );
+		templateProperties.put( "outputEncoding", getOutputEncoding() );
+		// Put any of the properties in directly into the Velocity context
+		for ( Map.Entry<Object, Object> entry : getProject().getProperties().entrySet() )
+		{
+			templateProperties.put( (String) entry.getKey(), entry.getValue() );
+		}
+		return templateProperties;
 	}
 }

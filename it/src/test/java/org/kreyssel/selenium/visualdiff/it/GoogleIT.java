@@ -1,5 +1,6 @@
 package org.kreyssel.selenium.visualdiff.it;
 
+import io.github.bonigarcia.wdm.WebDriverManager;
 import org.apache.commons.lang3.SystemUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -7,11 +8,10 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.kreyssel.selenium.visualdiff.core.junit4.TakesScreenshotRule;
 import org.openqa.selenium.By;
-import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.ie.InternetExplorerDriver;
 import org.openqa.selenium.remote.RemoteWebDriver;
-import org.openqa.selenium.support.ui.ExpectedCondition;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 /**
@@ -49,51 +49,21 @@ public class GoogleIT {
 
 		screenshot.takeScreenshot("edit", driver);
 
-		driver.findElementByName("btnG").click();
+		((JavascriptExecutor)this.driver).executeScript("arguments[0].click();", driver.findElement(By.name("btnK")));
 
-		wait.until(new ExpectedCondition<Boolean>() {
-			public Boolean apply(final WebDriver webDriver) {
-				System.out.println("searching ...");
-				return webDriver.findElement(By.id("resultStats")) != null;
-			}
+		wait.until(webDriver -> {
+			System.out.println("searching ...");
+			return webDriver.findElement(By.id("result-stats")) != null;
 		});
 
 		screenshot.takeScreenshot("afterSubmit", driver);
-	}
-
-	@Test
-	public void searchImages() throws Exception {
-		driver.get("http://www.google.com/");
-
-		screenshot.takeScreenshot("open", driver);
-
-		driver.findElementById("gb_2").click();
-
-		wait.until(new ExpectedCondition<Boolean>() {
-			public Boolean apply(final WebDriver webDriver) {
-				System.out.println("switch to images ...");
-				return webDriver.findElement(By.name("q")) != null;
-			}
-		});
-
-		screenshot.takeScreenshot("afterSwitchToImages", driver);
-
-		driver.findElementByName("q").sendKeys("selenium-2\n");
-
-		wait.until(new ExpectedCondition<Boolean>() {
-			public Boolean apply(final WebDriver webDriver) {
-				System.out.println("searching ...");
-				return webDriver.findElement(By.id("resultStats")) != null;
-			}
-		});
-
-		screenshot.takeScreenshot("searchResult", driver);
 	}
 
 	private RemoteWebDriver createDriver() {
 		if (SystemUtils.IS_OS_WINDOWS)
 			return new InternetExplorerDriver();
 
+		WebDriverManager.firefoxdriver().setup();
 		return new FirefoxDriver();
 	}
 }

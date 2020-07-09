@@ -3,8 +3,8 @@ package org.kreyssel.selenium.visualdiff.mojo.report;
 import java.util.List;
 
 import org.apache.maven.doxia.sink.Sink;
-import org.apache.maven.doxia.sink.SinkEventAttributeSet;
 import org.apache.maven.doxia.sink.SinkEventAttributes;
+import org.apache.maven.doxia.sink.impl.SinkEventAttributeSet;
 import org.apache.maven.reporting.AbstractMavenReportRenderer;
 import org.kreyssel.selenium.visualdiff.core.diff.VisualDiffMeta;
 import org.kreyssel.selenium.visualdiff.core.diff.VisualDiffMeta.Type;

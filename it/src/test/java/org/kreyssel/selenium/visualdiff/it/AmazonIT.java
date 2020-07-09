@@ -1,5 +1,6 @@
 package org.kreyssel.selenium.visualdiff.it;
 
+import io.github.bonigarcia.wdm.WebDriverManager;
 import org.apache.commons.lang3.SystemUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -7,11 +8,9 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.kreyssel.selenium.visualdiff.core.junit4.TakesScreenshotRule;
 import org.openqa.selenium.By;
-import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.ie.InternetExplorerDriver;
 import org.openqa.selenium.remote.RemoteWebDriver;
-import org.openqa.selenium.support.ui.ExpectedCondition;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 /**
@@ -49,17 +48,15 @@ public class AmazonIT {
 
 		screenshot.takeScreenshot("startPage", driver);
 
-		driver.findElementById("twotabsearchtextbox").sendKeys("selenium2");
+		driver.findElementById("twotabsearchtextbox").sendKeys("selenium3");
 
 		screenshot.takeScreenshot("afterInput", driver);
 
-		driver.findElementById("navGoButton").findElement(By.tagName("input")).click();
+		driver.findElementByClassName("nav-search-submit").findElement(By.tagName("input")).click();
 
-		wait.until(new ExpectedCondition<Boolean>() {
-			public Boolean apply(final WebDriver webDriver) {
-				System.out.println("searching ...");
-				return webDriver.findElement(By.id("atfResults")) != null;
-			}
+		wait.until(webDriver -> {
+			System.out.println("searching ...");
+			return webDriver.findElement(By.className("s-result-list")) != null;
 		});
 
 		screenshot.takeScreenshot("afterSearch", driver);
@@ -69,6 +66,7 @@ public class AmazonIT {
 		if (SystemUtils.IS_OS_WINDOWS)
 			return new InternetExplorerDriver();
 
+		WebDriverManager.firefoxdriver().setup();
 		return new FirefoxDriver();
 	}
 }
